@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 
 export async function getServerSession() {
-  return auth.api.getSession({ headers: await headers() });
+  try {
+    return await auth.api.getSession({ headers: await headers() });
+  } catch {
+    return null;
+  }
 }
 
 export async function requireSession() {
@@ -15,5 +19,9 @@ export async function requireSession() {
 }
 
 export async function getSessionFromRequest(request: Request) {
-  return auth.api.getSession({ headers: request.headers });
+  try {
+    return await auth.api.getSession({ headers: request.headers });
+  } catch {
+    return null;
+  }
 }

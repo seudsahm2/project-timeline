@@ -20,10 +20,12 @@ export default async function BossPage() {
           <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">
             Boss View
           </p>
-          <h1 className="mt-3 text-3xl font-semibold">Project approvals and summaries</h1>
+          <h1 className="mt-3 text-3xl font-semibold">
+            Project approvals and summaries
+          </h1>
           <p className="mt-2 text-slate-300">
-            Read-only summaries across all projects. To add comments or approvals,
-            open a project in the dashboard.
+            Read-only summaries across all projects. To add comments or
+            approvals, open a project in the dashboard.
           </p>
           <Link
             href="/dashboard"
@@ -53,13 +55,51 @@ export default async function BossPage() {
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm">
-                    Progress: <span className="font-semibold">{project.overallProgress}%</span>
+                    Progress:{" "}
+                    <span className="font-semibold">
+                      {project.overallProgress}%
+                    </span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm">
-                    Week: <span className="font-semibold">{project.selectedWeek}</span>
+                    Week:{" "}
+                    <span className="font-semibold">
+                      {project.selectedWeek}
+                    </span>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm">
                     Updated: {new Date(project.updatedAt).toLocaleString()}
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm font-medium">
+                      Weekly schedule alignment
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Last sync:{" "}
+                      {project.githubSyncedAt
+                        ? new Date(project.githubSyncedAt).toLocaleString()
+                        : "not synced yet"}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {project.weeklyOverview.map((week) => (
+                      <div
+                        key={week.weekNumber}
+                        className="rounded-2xl border border-white/10 bg-slate-950/50 p-3"
+                      >
+                        <p className="text-sm font-medium text-white">
+                          {week.label}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-300">
+                          {week.summary}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-400">
+                          Timeline items: {week.activityCount}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -68,18 +108,27 @@ export default async function BossPage() {
                   {project.latestUpdate ? (
                     <div className="mt-2 space-y-2 text-sm text-slate-300">
                       <p>
-                        <span className="font-medium text-white">{project.latestUpdate.authorName}</span> - {project.latestUpdate.status}
+                        <span className="font-medium text-white">
+                          {project.latestUpdate.authorName}
+                        </span>{" "}
+                        - {project.latestUpdate.status}
                       </p>
                       <p>{project.latestUpdate.updateText}</p>
-                      <p className="text-slate-400">Blockers: {project.latestUpdate.blockers || "None"}</p>
+                      <p className="text-slate-400">
+                        Blockers: {project.latestUpdate.blockers || "None"}
+                      </p>
                     </div>
                   ) : (
-                    <p className="mt-2 text-sm text-slate-400">No updates yet.</p>
+                    <p className="mt-2 text-sm text-slate-400">
+                      No updates yet.
+                    </p>
                   )}
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-sm font-medium">Recent approval comments</p>
+                  <p className="text-sm font-medium">
+                    Recent approval comments
+                  </p>
                   <ul className="mt-3 space-y-2 text-sm text-slate-300">
                     {project.approvals.length === 0 ? (
                       <li className="text-slate-400">No approvals yet.</li>
@@ -90,10 +139,14 @@ export default async function BossPage() {
                           className="rounded-xl border border-white/10 bg-slate-950/50 p-3"
                         >
                           <p>
-                            <span className="font-medium text-white">{approval.authorName}</span>: {approval.comment}
+                            <span className="font-medium text-white">
+                              {approval.authorName}
+                            </span>
+                            : {approval.comment}
                           </p>
                           <p className="text-xs text-slate-400">
-                            {approval.approved ? "Approved" : "Needs changes"} - {new Date(approval.createdAt).toLocaleString()}
+                            {approval.approved ? "Approved" : "Needs changes"} -{" "}
+                            {new Date(approval.createdAt).toLocaleString()}
                           </p>
                         </li>
                       ))

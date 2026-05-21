@@ -14,7 +14,10 @@ export async function POST(request: Request, context: Params) {
 
   await ensureUserProfile(session.user.id, session.user.email);
   const { projectId } = await context.params;
-  const body = (await request.json()) as { comment?: string; approved?: boolean };
+  const body = (await request.json()) as {
+    comment?: string;
+    approved?: boolean;
+  };
 
   const comment = (body.comment || "").trim();
   if (!comment) {

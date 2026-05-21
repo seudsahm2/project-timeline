@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  deleteProjectForUser,
   ensureUserProfile,
   getProjectForUser,
   updateProjectForUser,
@@ -50,4 +51,22 @@ export async function PATCH(request: Request, context: Params) {
   }
 
   return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request, context: Params) {
+  const session = await getSessionFromRequest(request);
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await ensureUserProfile(session.user.id, session.user.email);
+  const { projectId } = await context.params;
+  const result = await deleteProjectForUser(projectId, session.user.id);
+
+  if (!result.ok) {
+    const status = result.reason === "forbidden" ? 403 : 404;
+    return NextResponse.json({ error: "Project not found" }, { status });
+  }
+
+  return NextResponse.json({ ok: true, projectName: result.projectName });
 }

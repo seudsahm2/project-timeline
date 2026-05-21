@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createGitHubSyncPlaceholder, ensureUserProfile } from "@/lib/data";
+import { syncGitHubProjectData, ensureUserProfile } from "@/lib/data";
 import { getSessionFromRequest } from "@/lib/session";
 
 type Params = {
@@ -14,11 +14,11 @@ export async function POST(request: Request, context: Params) {
 
   await ensureUserProfile(session.user.id, session.user.email);
   const { projectId } = await context.params;
-  const ok = await createGitHubSyncPlaceholder(projectId, session.user.id);
+  const result = await syncGitHubProjectData(projectId, session.user.id);
 
-  if (!ok) {
+  if (!result) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true }, { status: 201 });
+  return NextResponse.json({ ok: true, result }, { status: 201 });
 }

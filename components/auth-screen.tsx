@@ -72,29 +72,6 @@ export function AuthScreen() {
     });
   };
 
-  const signInWithGitHub = () => {
-    setError(null);
-    startTransition(async () => {
-      try {
-        await authClient.signIn.social(
-          {
-            provider: "github",
-            callbackURL: "/dashboard",
-          },
-          {
-            onError: (context) => setError(context.error.message),
-          },
-        );
-      } catch (submitError) {
-        setError(
-          submitError instanceof Error
-            ? submitError.message
-            : "GitHub sign-in failed",
-        );
-      }
-    });
-  };
-
   return (
     <main className="relative min-h-screen overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.2),transparent_25%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_22%),linear-gradient(180deg,#07111f_0%,#0a1628_46%,#09101c_100%)]" />
@@ -167,8 +144,8 @@ export function AuthScreen() {
                   {title}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-slate-400">
-                  Use Better Auth email/password now and expand to roles, teams,
-                  or GitHub later.
+                  Use Better Auth email/password now. GitHub is reserved for
+                  project syncing, not login.
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
@@ -262,15 +239,6 @@ export function AuthScreen() {
                   : mode === "signIn"
                     ? "Sign in"
                     : "Create account"}
-              </button>
-
-              <button
-                type="button"
-                onClick={signInWithGitHub}
-                disabled={isPending}
-                className="inline-flex w-full items-center justify-center rounded-2xl border border-white/15 bg-white/10 px-4 py-3 font-medium text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                Continue with GitHub
               </button>
 
               <p className="text-center text-xs leading-5 text-slate-400">

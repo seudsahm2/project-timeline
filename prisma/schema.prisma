@@ -89,6 +89,7 @@ model Project {
   githubOwner     String?
   githubRepo      String?
   githubBranch    String?
+  githubSyncedAt  DateTime?
   status          String            @default("On track")
   overallProgress Int               @default(0)
   selectedWeek    String            @default("Week 1")
@@ -148,13 +149,18 @@ model ApprovalComment {
 }
 
 model ActivityEvent {
-  id        String   @id @default(cuid())
-  projectId String
-  source    String   @default("manual")
-  message   String
-  metadata  String?
-  createdAt DateTime @default(now())
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  projectId  String
+  source     String   @default("manual")
+  kind       String   @default("manual")
+  syncKey    String?  @unique
+  weekNumber Int?
+  message    String
+  referenceUrl String?
+  payload    String?
+  createdAt  DateTime @default(now())
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
+  @@index([projectId, weekNumber])
 }

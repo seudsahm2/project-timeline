@@ -45,7 +45,9 @@ function SectionCard({
   return (
     <section className="rounded-[2rem] border border-white/10 bg-slate-950/55 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.3)] backdrop-blur-xl">
       <div className="mb-5">
-        <p className="text-xs uppercase tracking-[0.3em] text-cyan-200/70">{eyebrow}</p>
+        <p className="text-xs uppercase tracking-[0.3em] text-cyan-200/70">
+          {eyebrow}
+        </p>
         <h2 className="mt-2 text-xl font-semibold text-white">{title}</h2>
       </div>
       {children}
@@ -68,13 +70,15 @@ export function DashboardScreen({
   const [projectDetails, setProjectDetails] = useState<ProjectDetails | null>(
     initialProject,
   );
-  const [createForm, setCreateForm] = useState<ProjectFormState>(emptyProjectForm);
+  const [createForm, setCreateForm] =
+    useState<ProjectFormState>(emptyProjectForm);
   const [dailyStatus, setDailyStatus] = useState("On track");
   const [dailyUpdate, setDailyUpdate] = useState("");
   const [dailyBlockers, setDailyBlockers] = useState("");
   const [approvalComment, setApprovalComment] = useState("");
   const [approvalDecision, setApprovalDecision] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const currentUserId = session?.user?.id ?? null;
 
   const selectedProject = useMemo(
     () => projects.find((item) => item.id === selectedProjectId) ?? null,
@@ -95,15 +99,59 @@ export function DashboardScreen({
     }
   }, [selectedProjectId]);
 
-  const refreshProjectDetails = async (projectId: string) => {
-    const response = await fetch(`/api/projects/${projectId}`, { cache: "no-store" });
+  const refreshProjectDetails = useCallback(async (projectId: string) => {
+    const response = await fetch(`/api/projects/${projectId}`, {
+      cache: "no-store",
+    });
     if (!response.ok) {
       return;
     }
 
     const payload = (await response.json()) as { project: ProjectDetails };
     setProjectDetails(payload.project);
-  };
+  }, []);
+
+  const syncGitHubProject = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!selectedProjectId) {
+        return;
+      }
+
+      const response = await fetch(
+        `/api/projects/${selectedProjectId}/github-sync`,
+        {
+          method: "POST",
+        },
+      );
+
+      if (!response.ok) {
+        if (!options?.silent) {
+          setNotice("GitHub sync failed.");
+        }
+        return;
+      }
+
+      await refreshProjectDetails(selectedProjectId);
+      await refreshProjects();
+
+      if (!options?.silent) {
+        const payload = (await response.json()) as {
+          result: {
+            commits: number;
+            pullRequests: number;
+            issues: number;
+            activities: number;
+            syncedAt: string;
+          };
+        };
+
+        setNotice(
+          `GitHub synced: ${payload.result.commits} commits, ${payload.result.pullRequests} PRs, ${payload.result.issues} issues.`,
+        );
+      }
+    },
+    [refreshProjectDetails, refreshProjects, selectedProjectId],
+  );
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -140,6 +188,33 @@ export function DashboardScreen({
     };
   }, [selectedProjectId, refreshProjects]);
 
+  useEffect(() => {
+    if (
+      !selectedProjectId ||
+      !projectDetails?.githubOwner ||
+      !projectDetails.githubRepo
+    ) {
+      return;
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void syncGitHubProject({ silent: true });
+
+    const timer = window.setInterval(
+      () => {
+        void syncGitHubProject({ silent: true });
+      },
+      5 * 60 * 1000,
+    );
+
+    return () => window.clearInterval(timer);
+  }, [
+    projectDetails?.githubOwner,
+    projectDetails?.githubRepo,
+    selectedProjectId,
+    syncGitHubProject,
+  ]);
+
   const handleSignOut = async () => {
     setIsSigningOut(true);
     await authClient.signOut({
@@ -150,7 +225,9 @@ export function DashboardScreen({
     setIsSigningOut(false);
   };
 
-  const handleCreateProject = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateProject = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
 
     const response = await fetch("/api/projects", {
@@ -192,7 +269,64 @@ export function DashboardScreen({
     await refreshProjectDetails(selectedProjectId);
   };
 
-  const handleDailyUpdateSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleDeleteProject = useCallback(async () => {
+    if (!selectedProjectId || !projectDetails) return;
+
+    // Only allow owner to delete (createdById available on projectDetails)
+    if (!currentUserId || projectDetails.createdById !== currentUserId) {
+      setNotice("You are not allowed to delete this project.");
+      return;
+    }
+
+    // confirm
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm(
+      `Delete project \"${projectDetails.name}\" and all its data? This cannot be undone.`,
+    );
+    if (!ok) return;
+
+    const response = await fetch(`/api/projects/${selectedProjectId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      setNotice("Could not delete project.");
+      return;
+    }
+
+    const payload = (await response.json()) as {
+      ok?: boolean;
+      projectName?: string;
+    };
+    await refreshProjects();
+
+    // choose next project or null
+    const remaining = projects.filter((p) => p.id !== selectedProjectId);
+    const nextId = remaining[0]?.id ?? null;
+    setSelectedProjectId(nextId);
+    if (nextId) {
+      await refreshProjectDetails(nextId);
+    } else {
+      setProjectDetails(null);
+    }
+
+    setNotice(
+      payload.projectName
+        ? `Deleted project: ${payload.projectName}`
+        : "Project deleted.",
+    );
+  }, [
+    currentUserId,
+    selectedProjectId,
+    projectDetails,
+    projects,
+    refreshProjects,
+    refreshProjectDetails,
+  ]);
+
+  const handleDailyUpdateSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     if (!selectedProjectId) {
       return;
@@ -219,20 +353,25 @@ export function DashboardScreen({
     setNotice("Daily update saved to database.");
   };
 
-  const handleApprovalSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleApprovalSubmit = async (
+    event: React.FormEvent<HTMLFormElement>,
+  ) => {
     event.preventDefault();
     if (!selectedProjectId) {
       return;
     }
 
-    const response = await fetch(`/api/projects/${selectedProjectId}/approvals`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        comment: approvalComment,
-        approved: approvalDecision,
-      }),
-    });
+    const response = await fetch(
+      `/api/projects/${selectedProjectId}/approvals`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          comment: approvalComment,
+          approved: approvalDecision,
+        }),
+      },
+    );
 
     if (!response.ok) {
       setNotice("Could not save approval comment.");
@@ -246,21 +385,7 @@ export function DashboardScreen({
   };
 
   const handleGitHubSync = async () => {
-    if (!selectedProjectId) {
-      return;
-    }
-
-    const response = await fetch(`/api/projects/${selectedProjectId}/github-sync`, {
-      method: "POST",
-    });
-
-    if (!response.ok) {
-      setNotice("GitHub sync placeholder failed.");
-      return;
-    }
-
-    await refreshProjectDetails(selectedProjectId);
-    setNotice("GitHub sync placeholder added to activity feed.");
+    await syncGitHubProject();
   };
 
   return (
@@ -284,8 +409,8 @@ export function DashboardScreen({
                 Project Timeline - real database mode
               </h1>
               <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
-                Manage multiple projects, persist daily updates, track approvals,
-                and sync GitHub placeholders in one live dashboard.
+                Manage multiple projects, persist daily updates, track
+                approvals, and sync GitHub placeholders in one live dashboard.
               </p>
             </div>
 
@@ -321,7 +446,10 @@ export function DashboardScreen({
               <input
                 value={createForm.name}
                 onChange={(event) =>
-                  setCreateForm((current) => ({ ...current, name: event.target.value }))
+                  setCreateForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
                 }
                 className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-sky-300/60"
                 placeholder="Project name"
@@ -383,7 +511,9 @@ export function DashboardScreen({
 
             <div className="mt-5 grid gap-2">
               {projects.length === 0 ? (
-                <p className="text-sm text-slate-400">Create your first project.</p>
+                <p className="text-sm text-slate-400">
+                  Create your first project.
+                </p>
               ) : (
                 projects.map((project) => (
                   <button
@@ -398,7 +528,8 @@ export function DashboardScreen({
                   >
                     <p className="font-medium text-white">{project.name}</p>
                     <p className="mt-1 text-xs text-slate-300">
-                      {project.status} - {project.overallProgress}% - {project.selectedWeek}
+                      {project.status} - {project.overallProgress}% -{" "}
+                      {project.selectedWeek}
                     </p>
                   </button>
                 ))
@@ -408,7 +539,9 @@ export function DashboardScreen({
 
           <SectionCard title="Project health" eyebrow="Live">
             {!projectDetails ? (
-              <p className="text-sm text-slate-400">Select or create a project.</p>
+              <p className="text-sm text-slate-400">
+                Select or create a project.
+              </p>
             ) : (
               <div className="space-y-4">
                 <div>
@@ -422,7 +555,9 @@ export function DashboardScreen({
                     max={100}
                     value={projectDetails.overallProgress}
                     onChange={(event) =>
-                      void patchProject({ overallProgress: Number(event.target.value) })
+                      void patchProject({
+                        overallProgress: Number(event.target.value),
+                      })
                     }
                     className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-sky-400"
                   />
@@ -431,7 +566,9 @@ export function DashboardScreen({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <select
                     value={projectDetails.selectedWeek}
-                    onChange={(event) => void patchProject({ selectedWeek: event.target.value })}
+                    onChange={(event) =>
+                      void patchProject({ selectedWeek: event.target.value })
+                    }
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3 text-sm text-white"
                   >
                     {roadmapWeeks.map((week) => (
@@ -443,7 +580,9 @@ export function DashboardScreen({
 
                   <select
                     value={projectDetails.status}
-                    onChange={(event) => void patchProject({ status: event.target.value })}
+                    onChange={(event) =>
+                      void patchProject({ status: event.target.value })
+                    }
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3 text-sm text-white"
                   >
                     {statusOptions.map((status) => (
@@ -499,9 +638,15 @@ export function DashboardScreen({
 
             <div className="mt-5 space-y-2 text-sm text-slate-300">
               {(projectDetails?.updates || []).map((item) => (
-                <div key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                >
                   <p>
-                    <span className="font-medium text-white">{item.authorName}</span> - {item.status}
+                    <span className="font-medium text-white">
+                      {item.authorName}
+                    </span>{" "}
+                    - {item.status}
                   </p>
                   <p className="mt-1">{item.updateText}</p>
                   <p className="mt-1 text-xs text-slate-400">
@@ -528,7 +673,9 @@ export function DashboardScreen({
                   <input
                     type="checkbox"
                     checked={approvalDecision}
-                    onChange={(event) => setApprovalDecision(event.target.checked)}
+                    onChange={(event) =>
+                      setApprovalDecision(event.target.checked)
+                    }
                     className="h-4 w-4 accent-emerald-400"
                   />
                   Mark as approved
@@ -544,12 +691,19 @@ export function DashboardScreen({
 
             <div className="mt-5 space-y-2 text-sm text-slate-300">
               {(projectDetails?.approvals || []).map((item) => (
-                <div key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div
+                  key={item.id}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                >
                   <p>
-                    <span className="font-medium text-white">{item.authorName}</span>: {item.comment}
+                    <span className="font-medium text-white">
+                      {item.authorName}
+                    </span>
+                    : {item.comment}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    {item.approved ? "Approved" : "Needs changes"} - {new Date(item.createdAt).toLocaleString()}
+                    {item.approved ? "Approved" : "Needs changes"} -{" "}
+                    {new Date(item.createdAt).toLocaleString()}
                   </p>
                 </div>
               ))}
@@ -565,19 +719,25 @@ export function DashboardScreen({
               <div className="space-y-3">
                 <input
                   value={projectDetails.githubOwner || ""}
-                  onChange={(event) => void patchProject({ githubOwner: event.target.value })}
+                  onChange={(event) =>
+                    void patchProject({ githubOwner: event.target.value })
+                  }
                   className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3 text-sm text-white"
                   placeholder="GitHub owner"
                 />
                 <input
                   value={projectDetails.githubRepo || ""}
-                  onChange={(event) => void patchProject({ githubRepo: event.target.value })}
+                  onChange={(event) =>
+                    void patchProject({ githubRepo: event.target.value })
+                  }
                   className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3 text-sm text-white"
                   placeholder="GitHub repository"
                 />
                 <input
                   value={projectDetails.githubBranch || ""}
-                  onChange={(event) => void patchProject({ githubBranch: event.target.value })}
+                  onChange={(event) =>
+                    void patchProject({ githubBranch: event.target.value })
+                  }
                   className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-3 text-sm text-white"
                   placeholder="Branch"
                 />
@@ -586,10 +746,54 @@ export function DashboardScreen({
                   onClick={handleGitHubSync}
                   className="rounded-2xl border border-cyan-300/40 bg-cyan-400/10 px-4 py-3 text-sm font-medium text-cyan-100"
                 >
-                  Run GitHub sync placeholder
+                  Sync GitHub now
                 </button>
+                {currentUserId &&
+                  projectDetails.createdById === currentUserId && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteProject}
+                      className="ml-3 rounded-2xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-200"
+                    >
+                      Delete project
+                    </button>
+                  )}
+                <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-white">
+                      Weekly GitHub alignment
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Last sync:{" "}
+                      {projectDetails.githubSyncedAt
+                        ? new Date(
+                            projectDetails.githubSyncedAt,
+                          ).toLocaleString()
+                        : "not synced yet"}
+                    </p>
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    {projectDetails.weeklyOverview.map((week) => (
+                      <div
+                        key={week.weekNumber}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                      >
+                        <p className="text-sm font-medium text-white">
+                          {week.label}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-300">
+                          {week.summary}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-400">
+                          Total timeline items: {week.activityCount}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <p className="text-xs text-slate-400">
-                  This saves real repository fields now and logs sync activity. Next step is replacing placeholder events with GitHub API ingestion.
+                  This imports real commits, pull requests, and issues from the
+                  selected GitHub repo and aligns them to the weekly schedule.
                 </p>
               </div>
             )}
@@ -598,10 +802,27 @@ export function DashboardScreen({
           <SectionCard title="Activity feed" eyebrow="Timeline">
             <ul className="space-y-2 text-sm text-slate-300">
               {(projectDetails?.activities || []).map((item) => (
-                <li key={item.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                <li
+                  key={item.id}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-3"
+                >
                   <p className="text-white">{item.message}</p>
+                  <p className="mt-1 text-xs text-cyan-100/80">
+                    {item.kind}
+                    {item.weekNumber ? ` · ${"Week " + item.weekNumber}` : ""}
+                  </p>
                   <p className="mt-1 text-xs text-slate-400">
                     {item.source} - {new Date(item.createdAt).toLocaleString()}
+                    {item.referenceUrl ? (
+                      <a
+                        href={item.referenceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 underline decoration-slate-500 underline-offset-2"
+                      >
+                        open
+                      </a>
+                    ) : null}
                   </p>
                 </li>
               ))}
